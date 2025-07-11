@@ -1,0 +1,148 @@
+// This is your Prisma schema file.
+// datasource, generator, and models are the main building blocks.
+
+// 1. Prisma Client Generator
+// এই ব্লকটি Prisma-কে TypeScript টাইপ সহ ক্লায়েন্ট তৈরি করার নির্দেশ দেয়।
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 2. Datasource
+// এই ব্লকটি আপনার ডাটাবেসের কানেকশন এবং ধরন সংজ্ঞায়িত করে।
+datasource db {
+  provider = "postgresql" // আমরা PostgreSQL ব্যবহার করছি
+  url      = env("DATABASE_URL") // ডাটাবেস URL .env ফাইল থেকে নেওয়া হবে
+}
+
+
+// -------------------------------------------
+// --- Next-Auth.js Models (প্রয়োজনীয়) ---
+// এই মডেলগুলো Next-Auth-এর Prisma Adapter-এর জন্য অপরিহার্য।
+// -------------------------------------------
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+
+// -------------------------------------------
+// --- Application Models (কাস্টম মডেল) ---
+// এই মডেলগুলো "DevPact" অ্যাপ্লিকেশনের মূল ফিচারগুলোর জন্য তৈরি।
+// -------------------------------------------
+
+// User Role Enum: ব্যবহারকারীর ভূমিকা নির্ধারণের জন্য
+enum UserRole {
+  USER
+  ADMIN
+}
+
+// User Model: অ্যাপ্লিকেশনের ব্যবহারকারী
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  username      String?   @unique // পাবলিক প্রোফাইলের জন্য (e.g., /username)
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  pacts         Pact[]      // একজন ব্যবহারকারীর অনেকগুলো Pact থাকতে পারে
+  checkIns      CheckIn[]   // একজন ব্যবহারকারীর অনেকগুলো Check-in থাকতে পারে
+  kudos         Kudo[]      // একজন ব্যবহারকারী অনেকগুলো Kudo দিতে পারে
+}
+
+// Pact Model: ব্যবহারকারীর ঘোষিত লক্ষ্য বা গোল
+model Pact {
+  id          String    @id @default(cuid())
+  title       String
+  description String?   @db.Text // দীর্ঘ বিবরণের জন্য @db.Text
+  deadline    DateTime
+  isCompleted Boolean   @default(false)
+  tags        String[]  // PostgreSQL এর array ফিচার ব্যবহার করে ট্যাগ রাখা হবে
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  authorId String
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Restrict) // লেখক ডিলিট হলে Pact ডিলিট হবে না
+  checkIns CheckIn[] // একটি Pact-এর অনেকগুলো Check-in থাকতে পারে
+}
+
+// CheckInStatus Enum: Check-in এর স্ট্যাটাস নির্ধারণের জন্য
+enum CheckInStatus {
+  ON_TRACK
+  MILESTONE
+  BLOCKED
+}
+
+// CheckIn Model: একটি Pact-এর অগ্রগতি আপডেট
+model CheckIn {
+  id        String        @id @default(cuid())
+  content   String        @db.Text
+  status    CheckInStatus @default(ON_TRACK)
+  imageUrl  String?       // আপডেটের সাথে ছবি যুক্ত করার অপশন
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade) // লেখক ডিলিট হলে তার Check-in ডিলিট হয়ে যাবে
+
+  pactId String
+  pact   Pact   @relation(fields: [pactId], references: [id], onDelete: Cascade) // Pact ডিলিট হলে তার সব Check-in ডিলিট হয়ে যাবে
+
+  kudos  Kudo[] // একটি Check-in এ অনেকগুলো Kudo থাকতে পারে
+}
+
+// Kudo Model: Check-in-এ দেওয়া উৎসাহ বা "লাইক"
+model Kudo {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  // Relations
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  checkInId String
+  checkIn   CheckIn @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+
+  // Constraint: একজন ব্যবহারকারী একটি Check-in-এ শুধুমাত্র একবার Kudo দিতে পারবে
+  @@unique([userId, checkInId])
+}
