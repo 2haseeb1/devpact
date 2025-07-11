@@ -3,10 +3,9 @@
 import { PrismaClient, CheckInStatus } from "@prisma/client";
 import { faker } from "@faker-js/faker";
 
-// Instantiate Prisma Client
 const prisma = new PrismaClient();
 
-// Meaningful English templates for Pacts
+// "DevPact" অ্যাপ্লিকেশনের জন্য অর্থপূর্ণ Pact টাইটেল এবং ট্যাগ
 const pactTemplates = [
   {
     title: "Learn Next.js App Router In-Depth",
@@ -50,46 +49,41 @@ const pactTemplates = [
   },
 ];
 
-// Meaningful English templates for Check-ins, corresponding to their status
-const checkInMessages = {
+// Check-in স্ট্যাটাসের সাথে সামঞ্জস্যপূর্ণ মেসেজের নমুনা
+const checkInMessages: Record<CheckInStatus, string[]> = {
   [CheckInStatus.ON_TRACK]: [
     "Making steady progress this week. The core logic is implemented.",
     "Feeling productive. Just successfully integrated the third-party API.",
-    "Everything is going according to plan. I'm on schedule to meet the deadline.",
+    "Everything is going according to the plan. I'm on schedule to meet the deadline.",
     "Pushed a new commit with the latest updates. The feature is really taking shape now.",
-    "I managed to solve a tricky bug today. It feels great to be moving forward again.",
   ],
   [CheckInStatus.MILESTONE]: [
     "Huge milestone reached! The authentication and user profiles are now fully functional.",
     "Big news! Deployed the first alpha version to Vercel. It's live!",
     "Finally finished the data visualization component. This was a tough but rewarding challenge.",
-    "I'm officially halfway through the online course. Celebrating this small but important win!",
-    "The MVP is feature-complete! Now focusing on testing and bug fixes before the launch.",
   ],
   [CheckInStatus.BLOCKED]: [
-    "I'm feeling a bit stuck on a state management issue with Zustand. It's more complex than I initially thought.",
-    "Currently blocked by a rate limit on an external API. I've reached out to their support team.",
-    "Running into some webpack configuration problems. The build keeps failing.",
-    "My motivation took a dip this week. I think I need to take a short break to recharge and refocus.",
-    "The documentation for this library is a bit unclear, which is slowing down my progress.",
+    "I'm feeling a bit stuck on a state management issue with Zustand.",
+    "Currently blocked by a rate limit on an external API.",
+    "My motivation took a dip this week. Taking a short break to recharge.",
   ],
 };
 
-// Main seeding function
+// মূল সিডিং ফাংশন
 async function main() {
   console.log("🌱 Starting to seed the database...");
 
-  // --- Clear Existing Data ---
+  // --- ডেটা পরিষ্কার করা (সঠিক ক্রমে) ---
   console.log("🧹 Clearing old data...");
   await prisma.kudo.deleteMany();
   await prisma.checkIn.deleteMany();
   await prisma.pact.deleteMany();
   await prisma.account.deleteMany();
   await prisma.session.deleteMany();
-  await prisma.user.deleteMany(); // User is last before Account/Session due to relations
+  await prisma.user.deleteMany();
   console.log("✅ Old data cleared successfully.");
 
-  // --- Create Users ---
+  // --- ব্যবহারকারী তৈরি করা ---
   console.log("👤 Creating users...");
   const users = await Promise.all(
     Array.from({ length: 15 }).map(() =>
@@ -97,7 +91,7 @@ async function main() {
         data: {
           name: faker.person.fullName(),
           username: faker.internet
-            .userName()
+            .username()
             .toLowerCase()
             .replace(/[\W_]+/g, ""),
           email: faker.internet.email().toLowerCase(),
@@ -109,23 +103,21 @@ async function main() {
   );
   console.log(`✅ Created ${users.length} users.`);
 
-  // --- Create Pacts ---
+  // --- Pacts তৈরি করা ---
   console.log("🤝 Creating meaningful pacts...");
   const pacts = [];
   for (const user of users) {
-    // Each user gets 1 or 2 random pacts
     const userPactTemplates = faker.helpers
       .shuffle(pactTemplates)
       .slice(0, faker.number.int({ min: 1, max: 2 }));
-
     for (const template of userPactTemplates) {
       const pact = await prisma.pact.create({
         data: {
           authorId: user.id,
           title: template.title,
-          description: faker.lorem.paragraph(3), // A generic description is fine
+          description: faker.lorem.paragraph(2),
           deadline: faker.date.future({ years: 1 }),
-          isCompleted: faker.datatype.boolean(0.2), // 20% chance the pact is already completed
+          isCompleted: faker.datatype.boolean(0.2),
           tags: template.tags,
         },
       });
@@ -134,11 +126,11 @@ async function main() {
   }
   console.log(`✅ Created ${pacts.length} pacts.`);
 
-  // --- Create Check-ins ---
+  // --- Check-ins তৈরি করা ---
   console.log("📊 Creating realistic check-ins...");
   const checkIns = [];
   for (const pact of pacts) {
-    // Only create check-ins for pacts that are not yet completed
+    // শুধুমাত্র অসম্পূর্ণ Pact-গুলোর জন্য Check-in তৈরি করা হচ্ছে
     if (!pact.isCompleted) {
       const checkInCount = faker.number.int({ min: 1, max: 5 });
       for (let i = 0; i < checkInCount; i++) {
@@ -155,8 +147,7 @@ async function main() {
               from: pact.createdAt,
               to: new Date(),
             }),
-            // 20% chance of having an image URL (e.g., a screenshot of code)
-            imageUrl: faker.datatype.boolean(0.2)
+            imageUrl: faker.datatype.boolean(0.15)
               ? faker.image.urlLoremFlickr({ category: "technics" })
               : null,
           },
@@ -167,22 +158,22 @@ async function main() {
   }
   console.log(`✅ Created ${checkIns.length} check-ins.`);
 
-  // --- Create Kudos ---
+  // --- Kudos তৈরি করা ---
   console.log("💖 Giving some kudos...");
   let kudoCount = 0;
   if (checkIns.length > 0) {
     for (const checkIn of checkIns) {
-      // 0 to 5 other users will give a kudo
       const kudoGivers = faker.helpers
         .shuffle(users)
-        .slice(0, faker.number.int({ min: 0, max: 5 }));
+        .slice(0, faker.number.int({ min: 0, max: 7 }));
 
       for (const user of kudoGivers) {
-        // Users can't give a kudo to their own check-in
         if (user.id !== checkIn.authorId) {
+          // ডেটাবেসে 이미 kudo আছে কি না তা চেক করার দরকার নেই,
+          // কারণ আমরা প্রতিবার সব ডেটা ডিলিট করে দিচ্ছি।
           await prisma.kudo.create({
             data: {
-              checkInId: checkIn.id,
+              checkInId: checkIn.id, // এখন checkInId ব্যবহার করা হচ্ছে
               userId: user.id,
             },
           });
@@ -196,7 +187,6 @@ async function main() {
   console.log("🎉 Seeding finished successfully!");
 }
 
-// Execute the main function and handle any errors
 main()
   .catch((e) => {
     console.error("❌ An error occurred while seeding the database:");
@@ -204,6 +194,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    // Finally, disconnect from the database
     await prisma.$disconnect();
   });
